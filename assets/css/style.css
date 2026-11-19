@@ -557,24 +557,30 @@ html:not(.no-js) .cta__drips { display: none; }
 /* ---------- 18. Refined sections ---------- */
 /* Trust bar */
 .trust-wrap { padding: 40px 0 0; }
+/* Mobile: one row per item, icon beside the text, inside a soft card */
 .trust {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  padding: 4px 18px; border-radius: 20px;
+  background: var(--paper); border: 1px solid var(--line);
 }
-.trust__item { display: flex; flex-direction: column; gap: 12px; padding: 24px 16px 24px 0; }
-.trust__item:nth-child(2n) { padding-left: 16px; border-left: 1px solid var(--line); }
-.trust__item:nth-child(n+3) { border-top: 1px solid var(--line); }
-.trust__item > svg { width: 22px; height: 22px; color: var(--honey-deep); flex: none; }
+.trust__item { display: flex; align-items: center; gap: 16px; padding: 16px 0; }
+.trust__item + .trust__item { border-top: 1px solid var(--line); }
+.trust__item > svg {
+  flex: none; width: 44px; height: 44px; padding: 11px; border-radius: 50%;
+  background: var(--honey-tint); color: var(--honey-deep);
+}
 .trust__item strong { display: block; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-.trust__item span { display: block; font-size: 14px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+.trust__item span { display: block; font-size: 14px; color: var(--muted); line-height: 1.45; margin-top: 1px; }
 @media (min-width: 900px) {
   .trust-wrap { padding-top: 56px; }
-  .trust { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .trust__item { flex-direction: row; align-items: flex-start; gap: 16px; padding: 32px 28px; }
+  .trust {
+    grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; border-radius: 0; background: none;
+    border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .trust__item { align-items: flex-start; gap: 16px; padding: 32px 28px; }
   .trust__item:first-child { padding-left: 0; }
-  .trust__item + .trust__item { border-left: 1px solid var(--line); }
-  .trust__item:nth-child(n+3) { border-top: 0; }
-  .trust__item > svg { margin-top: 2px; }
+  .trust__item + .trust__item { border-top: 0; border-left: 1px solid var(--line); }
+  .trust__item > svg { width: 22px; height: 22px; padding: 0; border-radius: 0; background: none; margin-top: 2px; }
 }
 
 /* Editorial statement */
