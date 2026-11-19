@@ -62,25 +62,193 @@ document.documentElement.classList.remove("no-js");
     revealEls.forEach((el) => el.classList.add("is-visible"));
   }
 
-  /* ---------- Hero video (fades in over the photo when the file exists) ---------- */
-  const heroVideo = $(".hero__video");
+  /* ---------- Background videos (hero, honey band) ----------
+     Each <video data-desktop data-mobile> loads when it nears the screen and fades in once
+     it can play. If the file is missing, the photo / animation underneath stays. */
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const saveData = navigator.connection && navigator.connection.saveData;
-  if (heroVideo && !reduceMotion && !saveData) {
+  const startVideo = (video) => {
     const isDesktop = window.matchMedia("(min-width: 900px)").matches;
-    const sources = isDesktop ? [heroVideo.dataset.desktop] : [heroVideo.dataset.mobile, heroVideo.dataset.desktop];
+    const sources = (isDesktop ? [video.dataset.desktop] : [video.dataset.mobile, video.dataset.desktop]).filter(Boolean);
     let i = 0;
     const tryNext = () => {
-      if (i >= sources.length) { heroVideo.remove(); return; }
-      heroVideo.src = sources[i++];
-      heroVideo.load();
+      if (i >= sources.length) { video.remove(); return; }
+      video.src = sources[i++];
+      video.load();
     };
-    heroVideo.addEventListener("error", tryNext);
-    heroVideo.addEventListener("canplay", () => {
-      heroVideo.play().then(() => heroVideo.classList.add("is-playing")).catch(() => {});
+    video.addEventListener("error", tryNext);
+    video.addEventListener("canplay", () => {
+      video.play().then(() => {
+        video.classList.add("is-playing");
+        if (video.parentElement) video.parentElement.classList.add("has-video");
+      }).catch(() => {});
     }, { once: true });
     tryNext();
+  };
+  const videos = $$("video[data-desktop]");
+  if (reduceMotion || saveData) {
+    videos.forEach((v) => v.remove());
+  } else if ("IntersectionObserver" in window) {
+    const vio = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { vio.unobserve(e.target); startVideo(e.target); } });
+    }, { rootMargin: "400px 0px" });
+    videos.forEach((v) => vio.observe(v));
+  } else {
+    videos.forEach(startVideo);
   }
+
+  /* ---------- Honey drips (canvas animation in the honey band) ---------- */
+  const honeyDrips = (canvas) => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const BAND = 30;            // depth of the honey layer at the top (px)
+    const GRAVITY = 1100;       // px/s² for falling drops
+    let w = 0, h = 0, drips = [], drops = [], t = 0, last = 0, raf = 0, visible = false;
+    const rand = (a, b) => a + Math.random() * (b - a);
+
+    const newDrip = (x, initial) => {
+      const small = w < 600;
+      const max = rand(30, small ? 70 : 105);
+      return {
+        x, max,
+        r: rand(8, 13) * (small ? 0.8 : 1),
+        len: initial ? rand(0, max * 0.9) : rand(0, 4),
+        speed: rand(4, 10),
+        wait: initial ? 0 : rand(0.4, 2.5),   // pause before a new drip starts to grow
+      };
+    };
+
+    const layout = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = rect.width; h = rect.height;
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const gap = w < 600 ? 56 : 92;
+      const n = Math.max(5, Math.floor(w / gap));
+      drips = [];
+      for (let i = 0; i < n; i++) {
+        drips.push(newDrip((i + 0.5) * (w / n) + rand(-gap * 0.22, gap * 0.22), true));
+      }
+      drops = [];
+    };
+
+    const honeyFill = () => {
+      const g = ctx.createLinearGradient(0, 0, 0, Math.max(h, 1));
+      g.addColorStop(0, "#CC820E");
+      g.addColorStop(0.3, "#BD7408");
+      g.addColorStop(1, "#A56005");
+      return g;
+    };
+
+    const bandEdge = (x) => BAND + Math.sin(x * 0.018 + t * 0.9) * 2.2 + Math.sin(x * 0.041 - t * 0.6) * 1.2;
+
+    const drawBand = () => {
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(w, 0);
+      for (let x = w; x >= 0; x -= 8) ctx.lineTo(x, bandEdge(x));
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    const drawDrip = (d) => {
+      const p = Math.min(1, d.len / d.max);
+      const R = d.r * (0.6 + 0.55 * p);              // bulb swells as it fills
+      const neck = Math.max(R * (0.9 - 0.45 * p), 2.5); // neck thins before it breaks
+      const y0 = bandEdge(d.x) - 3;
+      const yb = y0 + 3 + d.len;
+      const x = d.x;
+      ctx.beginPath();
+      ctx.moveTo(x - R * 3, y0);
+      ctx.quadraticCurveTo(x - R * 1.1, y0 + 2, x - neck, y0 + 3 + d.len * 0.5);
+      ctx.quadraticCurveTo(x - R * 1.05, yb - R * 1.2, x - R, yb);
+      ctx.arc(x, yb, R, Math.PI, 0, true);
+      ctx.quadraticCurveTo(x + R * 1.05, yb - R * 1.2, x + neck, y0 + 3 + d.len * 0.5);
+      ctx.quadraticCurveTo(x + R * 1.1, y0 + 2, x + R * 3, y0);
+      ctx.closePath();
+      ctx.fill();
+      return { x, yb, R };
+    };
+
+    const drawShine = (x, y, R) => {
+      ctx.save();
+      ctx.shadowColor = "transparent";
+      ctx.fillStyle = "rgba(255, 238, 196, .6)";
+      ctx.beginPath();
+      ctx.ellipse(x - R * 0.4, y - R * 0.28, R * 0.34, R * 0.18, -0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255, 238, 196, .25)";
+      ctx.beginPath();
+      ctx.ellipse(x + R * 0.45, y + R * 0.35, R * 0.14, R * 0.08, -0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const frame = (now) => {
+      const dt = Math.min(0.05, (now - (last || now)) / 1000);
+      last = now; t += dt;
+
+      // update
+      drips.forEach((d, i) => {
+        if (d.wait > 0) { d.wait -= dt; return; }
+        d.len += d.speed * dt * (0.35 + 1.4 * Math.pow(d.len / d.max, 2)); // slow, then heavier and faster
+        if (d.len >= d.max) {
+          const R = d.r * 1.15;
+          drops.push({ x: d.x, y: bandEdge(d.x) + d.len, r: R, vy: 40 });
+          drips[i] = newDrip(d.x, false);
+        }
+      });
+      drops.forEach((p) => { p.vy += GRAVITY * dt; p.y += p.vy * dt; });
+      drops = drops.filter((p) => p.y - p.r * 3 < h);
+
+      // draw
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = honeyFill();
+      ctx.shadowColor = "rgba(90, 50, 0, .28)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+      drawBand();
+      const bulbs = drips.map(drawDrip);
+      drops.forEach((p) => {
+        const stretch = 1 + Math.min(p.vy / 1600, 0.7);
+        ctx.globalAlpha = Math.max(0, Math.min(1, (h - p.y) / (h * 0.35)));
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, p.r * 0.85, p.r * stretch, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+      ctx.shadowColor = "transparent";
+      // glossy highlights
+      ctx.fillStyle = "rgba(255, 226, 160, .35)";
+      ctx.fillRect(0, 4, w, 2.5);
+      ctx.fillStyle = "rgba(255, 226, 160, .14)";
+      ctx.fillRect(0, 9, w, 5);
+      bulbs.forEach((b) => drawShine(b.x, b.yb, b.R));
+      drops.forEach((p) => drawShine(p.x, p.y, p.r));
+      ctx.fillStyle = honeyFill();
+
+      if (visible && !reduceMotion) raf = requestAnimationFrame(frame);
+    };
+
+    layout();
+    frame(performance.now());
+    if (reduceMotion) return;
+
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(() => { layout(); if (!visible) frame(performance.now()); }).observe(canvas);
+    }
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver((entries) => {
+        visible = entries[0].isIntersecting;
+        cancelAnimationFrame(raf);
+        if (visible) { last = 0; raf = requestAnimationFrame(frame); }
+      }).observe(canvas);
+    } else {
+      visible = true; raf = requestAnimationFrame(frame);
+    }
+  };
+  $$(".cta__honey").forEach(honeyDrips);
 
   /* ---------- Footer year ---------- */
   $$("[data-year]").forEach((el) => { el.textContent = new Date().getFullYear(); });
