@@ -296,11 +296,104 @@ document.documentElement.classList.remove("no-js");
   };
   $$("[data-price]").forEach((el) => { el.textContent = formatPrice(el.dataset.price); });
 
+  /* ---------- Carousel (arrows, dots, swipe) ---------- */
+  $$("[data-carousel]").forEach((carousel) => {
+    const section = carousel.closest("section") || document;
+    const track = $("[data-carousel-track]", carousel);
+    const prev = $("[data-carousel-prev]", section);
+    const next = $("[data-carousel-next]", section);
+    const dotsWrap = $("[data-carousel-dots]", section);
+    if (!track) return;
+    const pageWidth = () => track.clientWidth;
+    const pages = () => Math.max(1, Math.round(track.scrollWidth / pageWidth()));
+    const renderDots = () => {
+      if (!dotsWrap) return;
+      const n = pages();
+      if (dotsWrap.children.length !== n) dotsWrap.innerHTML = "<span></span>".repeat(n);
+      const i = Math.min(n - 1, Math.round(track.scrollLeft / pageWidth()));
+      Array.from(dotsWrap.children).forEach((d, k) => d.classList.toggle("is-active", k === i));
+    };
+    const update = () => {
+      const max = track.scrollWidth - track.clientWidth - 2;
+      if (prev) prev.disabled = track.scrollLeft <= 2;
+      if (next) next.disabled = track.scrollLeft >= max;
+      renderDots();
+    };
+    if (prev) prev.addEventListener("click", () => track.scrollBy({ left: -pageWidth(), behavior: "smooth" }));
+    if (next) next.addEventListener("click", () => track.scrollBy({ left: pageWidth(), behavior: "smooth" }));
+    track.addEventListener("scroll", () => window.requestAnimationFrame(update), { passive: true });
+    window.addEventListener("resize", update);
+    update();
+  });
+
+  /* ---------- "See it in real life" videos ---------- */
+  const reelThumbs = $$(".reel-thumb");
+  const modal = $(".reel-modal");
+  if (reelThumbs.length) {
+    // Desktop: silent preview while hovering a thumbnail
+    const canHover = window.matchMedia("(hover: hover)").matches;
+    if (canHover && !reduceMotion && !saveData) {
+      reelThumbs.forEach((t) => {
+        const v = $("video", t);
+        t.addEventListener("mouseenter", () => {
+          if (!v.src) v.src = t.dataset.src;
+          v.play().then(() => t.classList.add("is-previewing")).catch(() => {});
+        });
+        t.addEventListener("mouseleave", () => { v.pause(); t.classList.remove("is-previewing"); });
+      });
+    }
+
+    // Pop-up player
+    if (modal && typeof modal.showModal === "function") {
+      const mv = $("video", modal);
+      const cap = $(".reel-modal__caption", modal);
+      let current = 0;
+      const show = (i) => {
+        current = (i + reelThumbs.length) % reelThumbs.length;
+        const t = reelThumbs[current];
+        mv.poster = t.dataset.poster;
+        mv.src = t.dataset.src;
+        cap.textContent = t.dataset.caption;
+        mv.play().catch(() => {});
+      };
+      reelThumbs.forEach((t, i) => t.addEventListener("click", () => {
+        $$("video", t).forEach((v) => v.pause());
+        modal.showModal();
+        show(i);
+      }));
+      $("[data-reel-prev]", modal).addEventListener("click", () => show(current - 1));
+      $("[data-reel-next]", modal).addEventListener("click", () => show(current + 1));
+      $("[data-reel-close]", modal).addEventListener("click", () => modal.close());
+      modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
+      modal.addEventListener("close", () => { mv.pause(); mv.removeAttribute("src"); mv.load(); });
+      modal.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight") show(current + 1);
+        if (e.key === "ArrowLeft") show(current - 1);
+      });
+    }
+  }
+
+  /* ---------- Quick add (reel cards) ---------- */
+  $$("[data-quick-add]").forEach((btn) => btn.addEventListener("click", () => {
+    const items = readCart();
+    const existing = items.find((i) => i.size === "250" && (i.bundle || 1) === 1);
+    if (existing) existing.qty += 1; else items.push({ id: "wild-honey", size: "250", bundle: 1, qty: 1 });
+    writeCart(items);
+    renderCartCount();
+    showToast("Added 1 × Wild Honey (250 ml) to your cart");
+  }));
+
   /* ---------- Product page ---------- */
   const product = $("[data-product]");
   if (!product) return;
 
-  const state = { size: "250", qty: 1 };
+  const bundleButtons = $$(".bundle", product);
+  const startBundle = bundleButtons.find((b) => b.getAttribute("aria-pressed") === "true");
+  const state = {
+    size: "250", qty: 1,
+    bundle: startBundle ? Number(startBundle.dataset.bundle) : 1,
+    off: startBundle ? Number(startBundle.dataset.off) : 0,
+  };
   const sizeButtons = $$(".size", product);
   const priceEl = $("[data-live-price]", product);
   const qtyEl = $("[data-qty]", product);
@@ -311,14 +404,46 @@ document.documentElement.classList.remove("no-js");
     return btn ? btn.dataset.label : `${state.size} ml`;
   };
 
+  const orderText = () => {
+    const what = state.bundle > 1
+      ? `${state.qty} × ${state.bundle}-jar bundle of Wild Honey (${sizeLabel()}, ${state.off}% off)`
+      : `${state.qty} × Wild Honey (${sizeLabel()})`;
+    return what;
+  };
+
+  const money = (n) => `${SAHYA.currency}${Math.round(n).toLocaleString("en-IN")}`;
+  const renderBundles = () => {
+    const unit = SAHYA.prices[state.size];
+    bundleButtons.forEach((b) => {
+      const n = Number(b.dataset.bundle);
+      const off = Number(b.dataset.off);
+      b.setAttribute("aria-pressed", String(n === state.bundle));
+      const totalEl = $("[data-bundle-total]", b);
+      const eachEl = $("[data-bundle-each]", b);
+      const saveEl = $("[data-bundle-save]", b);
+      if (typeof unit === "number") {
+        const full = unit * n;
+        const total = full * (1 - off / 100);
+        totalEl.innerHTML = money(total);
+        eachEl.textContent = n === 1 ? "per jar" : `${money(total / n)} per jar`;
+        saveEl.textContent = off ? `You save ${money(full - total)}` : "Regular price";
+      }
+    });
+  };
+
   const update = () => {
     sizeButtons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.size === state.size)));
     if (priceEl) priceEl.textContent = formatPrice(state.size);
     if (qtyEl) qtyEl.textContent = state.qty;
-    if (orderWa) {
-      orderWa.href = waLink(`Hi Sahya, I would like to order ${state.qty} × Wild Honey (${sizeLabel()}).`);
-    }
+    renderBundles();
+    if (orderWa) orderWa.href = waLink(`Hi Sahya, I would like to order ${orderText()}.`);
   };
+
+  bundleButtons.forEach((b) => b.addEventListener("click", () => {
+    state.bundle = Number(b.dataset.bundle);
+    state.off = Number(b.dataset.off);
+    update();
+  }));
 
   sizeButtons.forEach((b) => b.addEventListener("click", () => { state.size = b.dataset.size; update(); }));
   const dec = $("[data-qty-dec]", product);
@@ -330,11 +455,12 @@ document.documentElement.classList.remove("no-js");
   if (addBtn) {
     addBtn.addEventListener("click", () => {
       const items = readCart();
-      const existing = items.find((i) => i.size === state.size);
-      if (existing) existing.qty += state.qty; else items.push({ id: "wild-honey", size: state.size, qty: state.qty });
+      const existing = items.find((i) => i.size === state.size && (i.bundle || 1) === state.bundle);
+      if (existing) existing.qty += state.qty * state.bundle;
+      else items.push({ id: "wild-honey", size: state.size, bundle: state.bundle, off: state.off, qty: state.qty * state.bundle });
       writeCart(items);
       renderCartCount();
-      showToast(`Added ${state.qty} × Wild Honey (${sizeLabel()}) to your cart`);
+      showToast(`Added ${orderText()} to your cart`);
     });
   }
 
