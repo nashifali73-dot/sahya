@@ -62,6 +62,26 @@ document.documentElement.classList.remove("no-js");
     revealEls.forEach((el) => el.classList.add("is-visible"));
   }
 
+  /* ---------- Hero video (fades in over the photo when the file exists) ---------- */
+  const heroVideo = $(".hero__video");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const saveData = navigator.connection && navigator.connection.saveData;
+  if (heroVideo && !reduceMotion && !saveData) {
+    const isDesktop = window.matchMedia("(min-width: 900px)").matches;
+    const sources = isDesktop ? [heroVideo.dataset.desktop] : [heroVideo.dataset.mobile, heroVideo.dataset.desktop];
+    let i = 0;
+    const tryNext = () => {
+      if (i >= sources.length) { heroVideo.remove(); return; }
+      heroVideo.src = sources[i++];
+      heroVideo.load();
+    };
+    heroVideo.addEventListener("error", tryNext);
+    heroVideo.addEventListener("canplay", () => {
+      heroVideo.play().then(() => heroVideo.classList.add("is-playing")).catch(() => {});
+    }, { once: true });
+    tryNext();
+  }
+
   /* ---------- Footer year ---------- */
   $$("[data-year]").forEach((el) => { el.textContent = new Date().getFullYear(); });
 

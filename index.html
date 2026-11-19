@@ -42,15 +42,15 @@
 <section class="hero-wrap" aria-label="Introduction">
   <div class="hero">
     <div class="hero__media">
-      <!-- To use a background video instead of the photo, replace <picture> with:
-           <video autoplay muted loop playsinline poster="assets/img/hero-desktop.webp">
-             <source src="assets/video/hero.mp4" type="video/mp4">
-           </video> -->
       <picture>
         <source media="(min-width: 900px)" srcset="assets/img/hero-desktop.webp" width="2048" height="1154">
         <img src="assets/img/hero-mobile.webp" width="900" height="1501" fetchpriority="high"
              alt="Granite peak, misty valley and a wildflower meadow in the Western Ghats with honeybees on the flowers">
       </picture>
+      <!-- Hero video: add assets/video/hero.mp4 (16:9) and optionally assets/video/hero-mobile.mp4 (9:16).
+           It fades in over the photo once it can play; until then the photo shows. -->
+      <video class="hero__video" muted loop playsinline preload="none" aria-hidden="true"
+             data-desktop="assets/video/hero.mp4" data-mobile="assets/video/hero-mobile.mp4"></video>
     </div>
     <div class="hero__shade" aria-hidden="true"></div>
     <div class="hero__content">
